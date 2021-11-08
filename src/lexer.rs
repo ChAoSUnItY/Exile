@@ -7,6 +7,7 @@ pub enum Token {
 #[derive(Debug, PartialEq, Clone)]
 pub enum Type {
     Identifier,
+    Integer,
     Whitespace,
     LineBreak,
     Colon,
@@ -24,7 +25,7 @@ pub fn lex(src: String) -> Vec<Token> {
         if let Some(character) = opt_character {
             let token = if character.is_alphabetic() {
                 let start = pos;
-    
+
                 loop {
                     if let Some(c) = chars.get(pos) {
                         if c.is_alphanumeric() {
@@ -35,20 +36,33 @@ pub fn lex(src: String) -> Vec<Token> {
                     break;
                 }
 
-                Token::Ok(
-                    Type::Identifier,
-                    src[start..pos].to_string(),
-                )
+                Token::Ok(Type::Identifier, src[start..pos].to_string())
+            } else if character.is_numeric() {
+                let start = pos;
+
+                loop {
+                    if let Some(c) = chars.get(pos) {
+                        if c.is_numeric() {
+                            pos += 1;
+                            continue;
+                        }
+                    }
+                    break;
+                }
+
+                Token::Ok(Type::Integer, src[start..pos].to_string())
             } else {
                 let token = match character {
                     ':' => Token::Ok(Type::Colon, character.to_string()),
-                    character if character.is_whitespace() => Token::Ok(Type::Whitespace, character.to_string()),
+                    character if character.is_whitespace() => {
+                        Token::Ok(Type::Whitespace, character.to_string())
+                    }
                     '\r' | '\n' => Token::Ok(Type::LineBreak, character.to_string()),
                     _ => Token::Err(character.to_string()),
                 };
 
                 pos += 1;
-                
+
                 token
             };
 

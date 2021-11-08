@@ -32,7 +32,7 @@ fn main() {
 
         println!(
             "{:?}",
-            tokens
+            tokens.as_ref().lock().unwrap()
         );
     }
 }
