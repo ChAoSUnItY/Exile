@@ -1,13 +1,14 @@
+mod gen;
 mod lexer;
+mod parser;
 
 extern crate rayon;
 
-use lexer::{lex, Token};
+use lexer::lex;
 use rayon::prelude::*;
 use std::{
     fs::File,
     io::{self, BufRead, BufReader, Error},
-    sync::{Arc, Mutex},
 };
 
 fn main() {
@@ -15,7 +16,6 @@ fn main() {
 
     if let Ok(file) = File::open(file_name) {
         let reader = BufReader::new(file);
-        let tokens = Arc::new(Mutex::new(Vec::<Token>::new()));
         let line_vec = reader.lines().collect::<Vec<Result<String, Error>>>();
 
         if line_vec.par_iter().any(|result| result.is_err()) {
@@ -23,16 +23,26 @@ fn main() {
             return;
         }
 
-        line_vec.par_iter().for_each(|r| {
-            tokens
-                .lock()
-                .unwrap()
-                .append(&mut lex(r.as_ref().unwrap().to_string()));
-        });
+        let tokens = line_vec
+            .par_iter()
+            .map(|r| lex(r.as_ref().unwrap().to_string()))
+            .flatten()
+            .collect();
 
-        println!(
-            "{:?}",
-            tokens.as_ref().lock().unwrap()
-        );
+        // println!(
+        //     "{:?}",
+        //     tokens.lock().unwrap().to_vec()
+        // );
+
+        let methods = parser::parse(tokens);
+
+        // println!(
+        //     "{:?}",
+        //     methods
+        // );
+
+        let llvm_code = gen::gen(methods);
+
+        println!("{}", llvm_code);
     }
 }

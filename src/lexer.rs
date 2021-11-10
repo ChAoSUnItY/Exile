@@ -1,7 +1,14 @@
 #[derive(Debug, Clone)]
-pub enum Token {
-    Ok(Type, String),
-    Err(String),
+pub struct Token {
+    pub token_type: Type,
+    pub literal: String,
+}
+
+fn new(token_type: Type, literal: String) -> Token {
+    Token {
+        token_type,
+        literal,
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -11,6 +18,7 @@ pub enum Type {
     Whitespace,
     LineBreak,
     Colon,
+    Error
 }
 
 pub fn lex(src: String) -> Vec<Token> {
@@ -36,7 +44,7 @@ pub fn lex(src: String) -> Vec<Token> {
                     break;
                 }
 
-                Token::Ok(Type::Identifier, src[start..pos].to_string())
+                new(Type::Identifier, src[start..pos].to_string())
             } else if character.is_numeric() {
                 let start = pos;
 
@@ -50,15 +58,15 @@ pub fn lex(src: String) -> Vec<Token> {
                     break;
                 }
 
-                Token::Ok(Type::Integer, src[start..pos].to_string())
+                new(Type::Integer, src[start..pos].to_string())
             } else {
                 let token = match character {
-                    ':' => Token::Ok(Type::Colon, character.to_string()),
+                    ':' => new(Type::Colon, character.to_string()),
                     character if character.is_whitespace() => {
-                        Token::Ok(Type::Whitespace, character.to_string())
+                        new(Type::Whitespace, character.to_string())
                     }
-                    '\r' | '\n' => Token::Ok(Type::LineBreak, character.to_string()),
-                    _ => Token::Err(character.to_string()),
+                    '\r' | '\n' => new(Type::LineBreak, character.to_string()),
+                    _ => new(Type::Error, character.to_string()),
                 };
 
                 pos += 1;
@@ -72,5 +80,8 @@ pub fn lex(src: String) -> Vec<Token> {
         }
     }
 
-    return tokens;
+    // add line break token
+    tokens.push(new(Type::LineBreak, "\n".to_string()));
+
+    tokens
 }
