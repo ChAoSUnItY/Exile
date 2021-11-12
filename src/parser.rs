@@ -12,6 +12,7 @@ pub struct Method {
 #[derive(Debug)]
 pub enum Instruction {
     Push(Token),
+    Add(),
     Ret(),
 }
 
@@ -107,6 +108,7 @@ fn parse_instruction<'a>(
                     )
                     .to_owned(),
                 ),
+                "add" => Instruction::Add(),
                 "ret" => Instruction::Ret(),
                 _ => panic!("Unkown instruction {}", literal),
             }

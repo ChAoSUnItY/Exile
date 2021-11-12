@@ -1,10 +1,24 @@
-use std::hash::Hasher;
-
-use crate::parser::{Instruction, Method};
+use crate::{
+    lexer::Type,
+    parser::{Instruction, Method},
+};
 
 struct Gen {
     builder: String,
     method_gen: MethodGen,
+}
+
+macro_rules! write {
+    ($gen:expr, $($arg:tt)*) => {
+        let result = format!($($arg)*);
+        $gen.write(&result);
+    };
+}
+
+macro_rules! writeln {
+    ($gen:expr, $($arg:tt)*) => {
+        $gen.writeln(&format!($($arg)*));
+    };
 }
 
 impl Gen {
@@ -43,17 +57,30 @@ impl Gen {
 }
 
 struct MethodGen {
+    stack_tracker: Vec<StackItem>,
     indent: u32,
     empty_line: bool,
-    tmp_variable: u32,
+    variable_index: usize,
+}
+
+struct StackItem {
+    index: usize,
+    item_type: String,
+}
+
+impl StackItem {
+    const fn new(index: usize, item_type: String) -> Self {
+        Self { index, item_type }
+    }
 }
 
 impl MethodGen {
     const fn new() -> Self {
         Self {
+            stack_tracker: vec![],
             indent: 0,
             empty_line: true,
-            tmp_variable: 0,
+            variable_index: 0,
         }
     }
 
@@ -65,9 +92,38 @@ impl MethodGen {
         self.indent -= 1;
     }
 
-    fn next_tmp(&mut self) -> String {
-        self.tmp_variable += 1;
-        format!("%{}", self.tmp_variable)
+    fn allocate_variable(&mut self, type_name: &String, count: usize) -> Vec<String> {
+        let variables = (self.variable_index + 1..=self.variable_index + count)
+            .map(|i| format!("%{}", i))
+            .collect::<Vec<String>>();
+        self.variable_index += count;
+        self.stack_tracker
+            .push(StackItem::new(self.variable_index, type_name.to_string()));
+        variables
+    }
+
+    fn assert_same_type(&self, expected_type: String, operand_count: usize) -> bool {
+        if self.stack_tracker.len() < operand_count {
+            return false;
+        }
+
+        let index = self.stack_tracker.len() - operand_count;
+        let mut stack_items = (&self.stack_tracker[index..]).iter();
+
+        if operand_count == 1 {
+            stack_items.next().unwrap().item_type == expected_type
+        } else {
+            stack_items.all(|item| item.item_type == expected_type)
+        }
+    }
+
+    fn last_type(&self) -> String {
+        return self
+            .stack_tracker
+            .last()
+            .expect("Expected operand")
+            .item_type
+            .clone();
     }
 }
 
@@ -85,31 +141,79 @@ pub fn gen(methods: Vec<Method>) -> String {
 
 fn gen_method(gen: &mut Gen, method: &Method) {
     // method header
-    gen.write("define ");
-    gen.write(&method.return_type);
-    gen.write(" @");
-    gen.write(&method.name);
-    gen.write("(");
-    gen.writeln(") {");
+    writeln!(gen, "define {} @{}() {{", method.return_type, method.name);
     gen.method_gen.inc_indent();
 
     // method body
     let mut instruction_iter = method.instructions.iter().peekable();
+    let mut last_instruction = method
+        .instructions
+        .first()
+        .expect("Expected instruction but found nothing");
 
     while instruction_iter.peek().is_some() {
-        match &instruction_iter.next().unwrap() {
+        let instruction = &instruction_iter.next().unwrap();
+
+        match instruction {
             Instruction::Push(token) => {
-                let temp = &gen.method_gen.next_tmp();
-                gen.write(temp);
-                gen.writeln(" = alloca i32");
-                gen.write("store i32 ");
-                gen.write(&token.literal);
-                gen.write(", i32* ");
-                gen.writeln(temp);
+                let value_type = match token.token_type {
+                    Type::Integer => "i32",
+                    _ => "Expected value",
+                };
+                let variable = gen.method_gen.allocate_variable(&value_type.to_string(), 1);
+                writeln!(gen, "{0} = alloca {1}", variable[0], value_type);
+                writeln!(
+                    gen,
+                    "store {0} {1}, {0}* {2}",
+                    value_type, token.literal, variable[0]
+                );
             }
-            Instruction::Ret() => gen.writeln("ret void"),
-            _ => break,
+            Instruction::Add() => {
+                let operand_type = gen.method_gen.last_type();
+                let tmp_variable = gen.method_gen.allocate_variable(&operand_type, 3);
+
+                if !gen.method_gen.assert_same_type(operand_type.clone(), 2) {
+                    panic!("Could not apply addition on different types");
+                }
+
+                for i in 0..2 {
+                    writeln!(
+                        gen,
+                        "{0} = load {1}, {1}* %{2}",
+                        tmp_variable[i],
+                        operand_type,
+                        gen.method_gen.variable_index - 4 + i
+                    )
+                }
+
+                writeln!(
+                    gen,
+                    "{0} = add nsw {1} %{2}, %{3}",
+                    tmp_variable[2],
+                    operand_type,
+                    gen.method_gen.variable_index - 2,
+                    gen.method_gen.variable_index - 1
+                );
+            }
+            Instruction::Ret() => {
+                if method.return_type == "void" {
+                    writeln!(gen, "ret void");
+                } else {
+                    writeln!(
+                        gen,
+                        "ret {0} %{1}",
+                        method.return_type,
+                        gen.method_gen
+                            .stack_tracker
+                            .last()
+                            .expect("Expected operand to return but no value on stack")
+                            .index
+                    );
+                }
+            }
         }
+
+        last_instruction = instruction.to_owned();
     }
 
     // method tail
