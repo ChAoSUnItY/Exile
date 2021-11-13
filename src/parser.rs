@@ -9,11 +9,39 @@ pub struct Method {
     pub instructions: Vec<Instruction>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Instruction {
     Push(Token),
     Add(),
+    Sub(),
+    Mul(),
+    Div(),
+    Rem(),
     Ret(),
+}
+
+impl Instruction {
+    pub fn opcode(&self, type_name: &str) -> String {
+        let mut type_prefix = match type_name {
+            "i32" => match self {
+                Instruction::Div() | Instruction::Rem() => "s",
+                _ => "",
+            },
+            "f32" => "f",
+            _ => panic!("Unkown type name for opcode"),
+        }
+        .to_owned();
+        type_prefix.push_str(match self {
+            Instruction::Add() => "add",
+            Instruction::Sub() => "sub",
+            Instruction::Mul() => "mul",
+            Instruction::Div() => "div",
+            Instruction::Rem() => "rem",
+            Instruction::Ret() => "ret",
+            _ => "",
+        });
+        type_prefix
+    }
 }
 
 fn assert(token: &Token, token_type: Type) -> &Token {
@@ -109,6 +137,10 @@ fn parse_instruction<'a>(
                     .to_owned(),
                 ),
                 "add" => Instruction::Add(),
+                "sub" => Instruction::Sub(),
+                "mul" => Instruction::Mul(),
+                "div" => Instruction::Div(),
+                "rem" => Instruction::Rem(),
                 "ret" => Instruction::Ret(),
                 _ => panic!("Unkown instruction {}", literal),
             }
